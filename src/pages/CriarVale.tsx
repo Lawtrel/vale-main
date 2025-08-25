@@ -7,7 +7,7 @@ import { ResumoFinanceiro } from "@/components/ui/calculator-create-palet";
 import { PreviewVale } from "@/components/ui/preview-create-palet";
 import { AcoesRapidas } from "@/components/ui/quickactions-create-palet";
 import { db, auth } from "@/lib/firebase";
-import { collection, getDocs, addDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { collection, getDocs, addDoc, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 export interface Cliente {
@@ -26,12 +26,10 @@ type FormData = {
   dataVencimento: string;
   observacoes: string;
   valorUnitario: string;
-  peso: string;
 };
 
 const CriarVale = () => {
   const { toast } = useToast();
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
@@ -41,30 +39,21 @@ const CriarVale = () => {
     dataVencimento: "",
     observacoes: "",
     valorUnitario: "0",
-    peso: "0",
   });
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [transportadoras, setTransportadoras] = useState<Transportadora[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) setOrganizationId(user.uid);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!organizationId) return;
     const fetchDados = async () => {
       try {
         // --- CORREÇÃO AQUI: buscando doc.data().nome ---
-        const qClientes = query(collection(db, "clientes"), where("organizationId", "==", organizationId));
+        const qClientes = query(collection(db, "clientes"));
         const clientesSnap = await getDocs(qClientes);
         setClientes(clientesSnap.docs.map(doc => ({ id: doc.id, nome: doc.data().nome } as Cliente)));
         
         // --- CORREÇÃO AQUI: buscando doc.data().nome ---
-        const qTransportadoras = query(collection(db, "transportadoras"), where("organizationId", "==", organizationId));
+        const qTransportadoras = query(collection(db, "transportadoras"));
         const transportadorasSnap = await getDocs(qTransportadoras);
         setTransportadoras(transportadorasSnap.docs.map(doc => ({ id: doc.id, nome: doc.data().nome } as Transportadora)));
       } catch (error) {
@@ -72,37 +61,29 @@ const CriarVale = () => {
       }
     };
     fetchDados();
-  }, [organizationId]);
+  }, []);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const gerarVale = async () => {
-    if (!organizationId) return;
     if (!formData.cliente || !formData.transportadora || !formData.quantidade || !formData.dataVencimento) {
       toast({ title: "⚠️ Campos obrigatórios", variant: "destructive" });
       return;
     }
     setLoading(true);
-
+    const dataVencimentoCorreta = new Date(formData.dataVencimento);
+    dataVencimentoCorreta.setDate(dataVencimentoCorreta.getDate() + 1 )
     const valeData = {
       cliente: formData.cliente,
       transportadora: formData.transportadora,
       quantidade: parseInt(formData.quantidade) || 0,
       valorUnitario: parseFloat(formData.valorUnitario) || 0,
-      pesoBruto: parseFloat(formData.peso) || 0,
-      dataVencimento: new Date(formData.dataVencimento).toISOString(),
+      dataVencimento: dataVencimentoCorreta.toISOString(),
       observacoes: formData.observacoes || "",
       status: "acumulado",
-      dataCriacao: serverTimestamp(),
-      organizationId: organizationId,
-      produto: "N/A",
-      placa: "N/A",
-      motorista: "N/A",
-      pesoTara: 0,
-      pesoLiquido: parseFloat(formData.peso) || 0,
-      unidade: 'KG'
+      dataCriacao: new Date().toISOString(), 
     };
 
     try {
@@ -110,7 +91,7 @@ const CriarVale = () => {
       toast({ title: "✅ Vale criado com sucesso!" });
       setFormData({
         cliente: "", transportadora: "", quantidade: "0", dataVencimento: "",
-        observacoes: "", valorUnitario: "0", peso: "0"
+        observacoes: "", valorUnitario: "0",
       });
     } catch (error) {
       toast({ title: "❌ Erro ao criar vale", variant: "destructive" });

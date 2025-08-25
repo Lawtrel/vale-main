@@ -46,7 +46,6 @@ if (!form.email || !form.senha) {
       }
 
       const usuarioData = querySnapshot.docs[0].data();
-
       // Passo 3: Verificar o status do usuário no seu sistema
       if (usuarioData.status !== "ativo") {
         await auth.signOut(); // Desloga o usuário se não estiver ativo
@@ -61,7 +60,6 @@ if (!form.email || !form.senha) {
         localStorage.setItem("usuario", JSON.stringify({ id: querySnapshot.docs[0].id, ...usuarioData }));
         // Armazena o ID do admin para ser usado em outras páginas, como no cadastro de clientes/transportadoras
         localStorage.setItem("admId", querySnapshot.docs[0].id);
-
 
         toast({
           title: "✅ Login realizado",
@@ -126,6 +124,15 @@ if (!form.email || !form.senha) {
           >
             {loading ? "Entrando..." : "Entrar"}
           </Button>
+          <p className="text-center text-sm text-gray-600">
+              Ainda não tem uma conta?{" "}
+              <a
+                href="/"
+                className="text-blue-600 hover:underline font-medium"
+              >
+                Cadastre-se
+              </a>
+            </p>
         </CardContent>
       </Card>
     </div>

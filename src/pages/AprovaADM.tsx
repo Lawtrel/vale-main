@@ -20,7 +20,7 @@ export default function AprovarAdms() {
   const { toast } = useToast();
 
   const fetchUsuarios = async () => {
-   try {
+    try {
       // Busca usuários com status 'pendente'
       const pendentesQuery = query(collection(db, "admins"), where("status", "==", "pendente"));
       const pendentesSnapshot = await getDocs(pendentesQuery);
@@ -45,7 +45,7 @@ export default function AprovarAdms() {
 
   const aprovarUsuario = async (user: Usuario) => {
     try {
-     const userDocRef = doc(db, "admins", user.uid);
+      const userDocRef = doc(db, "admins", user.uid);
       await updateDoc(userDocRef, { status: "ativo" });
       toast({ title: "✅ Aprovado", description: `${user.nome} agora está ativo.` });
       fetchUsuarios(); // Re-busca os usuários para atualizar as listas
@@ -138,8 +138,8 @@ export default function AprovarAdms() {
               ))}
 
               {/* Adms */}
-              <h4 className="text-lg font-semibold text-gray-700 mt-6">🛡️ Administradores</h4>
-              {ativos.filter((u) => u.role === "adm").map((user) => (
+              <h4 className="text-lg font-semibold text-gray-700 mt-6">🛡️ Supervisores</h4>
+              {ativos.filter((u) => u.role === "supervisor").map((user) => (
                 <div key={user.uid} className="flex justify-between items-center border-b py-3">
                   <div>
                     <p className="font-semibold">{user.nome}</p>

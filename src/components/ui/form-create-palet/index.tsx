@@ -8,6 +8,7 @@ import ClienteSearch from "@/components/ClientSearch";
 import TransportadoraSearch from "@/components/TransportadoraSearch";
 import { FileText, Plus, Save } from "lucide-react";
 import { useToast } from "../use-toast";
+import { useEffect } from "react";
 
 // Interface atualizada para corresponder ao que 'CriarVale' envia
 interface FormCreatePaletProps {
@@ -18,7 +19,6 @@ interface FormCreatePaletProps {
     dataVencimento: string;
     observacoes: string;
     valorUnitario: string;
-    peso: string;
   };
   clientes: Cliente[];
   transportadoras: Transportadora[];
@@ -45,6 +45,25 @@ export function FormCreatePalet({
       description: "Os dados foram salvos localmente.",
     });
   };
+   // 🔹 Carregar rascunho salvo no primeiro render
+    useEffect(() => {
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      try {
+        const parsedDraft = JSON.parse(draft);
+        // percorre as chaves do rascunho e atualiza o formulário
+        Object.keys(parsedDraft).forEach((key) => {
+          onInputChange(key, parsedDraft[key as keyof typeof parsedDraft]);
+        });
+        toast({
+          title: "📂 Rascunho carregado",
+          description: "Dados recuperados do último rascunho salvo.",
+        });
+      } catch (err) {
+        console.error("Erro ao carregar rascunho:", err);
+      }
+    }
+    }, []);
 
   // --- ESTA É A CORREÇÃO CRUCIAL ---
   // Esta função recebe o cliente selecionado e informa a página principal
@@ -86,11 +105,7 @@ export function FormCreatePalet({
               </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <Label htmlFor="peso" className="mb-2 block font-medium text-gray-700">Peso Total (KG)</Label>
-              <Input id="peso" type="number" placeholder="0" value={formData.peso} onChange={(e) => onInputChange("peso", e.target.value)} className="h-12" />
-            </div>
+          <div className="md:grid-cols-2 gap-6">
             <div>
               <Label htmlFor="valorUnitario" className="mb-2 block font-medium text-gray-700">Valor Unitário (R$)</Label>
               <Input id="valorUnitario" type="number" placeholder="0.00" step="0.01" value={formData.valorUnitario} onChange={(e) => onInputChange("valorUnitario", e.target.value)} className="h-12" />
@@ -114,6 +129,7 @@ export function FormCreatePalet({
                 type="date"
                 value={formData.dataVencimento}
                 onChange={(e) => onInputChange("dataVencimento", e.target.value)}
+                min={new Date().toISOString().split("T")[0]} // não permite datas anteriores
                 className="h-12 border-2 focus:border-blue-500"
               />
             </div>

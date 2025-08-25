@@ -5,7 +5,6 @@ import { Eye, Download, Search, Filter } from "lucide-react";
 import { useVales, Vale } from '@/hooks/useVales'; // Importando nosso hook do Firebase
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label"; // Importando o Label
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -15,7 +14,7 @@ const ValesProcessados = () => {
   const [vales, setVales] = useState<Vale[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState("");
-  const [transportadoraFiltro, setTransportadoraFiltro] = useState("todas");
+  const [transportadoraFiltro, setTransportadoraFiltro] = useState("");
   const [selectedVale, setSelectedVale] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,8 +22,9 @@ const ValesProcessados = () => {
       setError(null);
       try {
         // A mágica acontece aqui: buscando os vales 'processados' do Firebase
-        const data = await buscarVales('valescadastrados', 'processado');
+        const data = await buscarVales('valesprocessados', 'processado');
         setVales(data);
+        console.log(data)
       } catch (e) {
         setError("Falha ao carregar os vales processados.");
       }
@@ -64,16 +64,15 @@ const ValesProcessados = () => {
 
   const valesFiltrados = vales.filter(vale => {
     const clienteMatch = vale.cliente.toLowerCase().includes(filtro.toLowerCase());
-    const transportadoraMatch = transportadoraFiltro === "todas" || vale.transportadora.toLowerCase() === transportadoraFiltro.toLowerCase();
+    const transportadoraMatch =  vale.transportadora.toLowerCase().includes(transportadoraFiltro.toLowerCase());
     return clienteMatch && transportadoraMatch;
   });
-
-  const transportadoras = Array.from(new Set(vales.map(vale => vale.transportadora)));
 
   if (loading) return <div className="p-6 text-center">Carregando vales processados...</div>;
   if (error) return <div className="p-6 text-center text-red-600">{error}</div>;
 
   return (
+    <>
     <div className="p-6 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-xl">
         <div className="flex items-center justify-between">
@@ -113,19 +112,14 @@ const ValesProcessados = () => {
             </div>
             <div>
               <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                🚛 Filtrar por Transportadora
+                🚛 Buscar por Transportadora
               </Label>
-              <Select value={transportadoraFiltro} onValueChange={setTransportadoraFiltro}>
-                <SelectTrigger className="h-12 border-2 focus:border-blue-500">
-                  <SelectValue placeholder="Todas as transportadoras" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as transportadoras</SelectItem>
-                  {transportadoras.map(transp => (
-                    <SelectItem key={transp} value={transp}>{transp}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                  placeholder="Digite o nome da transportadora..."
+                  value={transportadoraFiltro}
+                  onChange={(e) => setTransportadoraFiltro(e.target.value)}
+                  className="pl-10 h-12 border-2 focus:border-blue-500"
+                />
             </div>
           </div>
         </CardContent>
@@ -133,7 +127,7 @@ const ValesProcessados = () => {
 
       <div className="space-y-4">
         {valesFiltrados.length > 0 ? valesFiltrados.map((vale) => (
-          <Card key={vale.id} className="hover:shadow-xl transition-all duration-300 border-l-4 border-l-green-500">
+          <Card key={vale.id} className="hover:shadow-xl transition-all duration-300 border-l-4 border-l-blue-500">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                 <Badge variant="outline" className="font-mono text-lg px-3 py-1 bg-green-50 border-green-300">
@@ -151,6 +145,12 @@ const ValesProcessados = () => {
                 </div>
               </div>
               <h3 className="font-bold text-xl text-gray-800 mb-3">{vale.cliente}</h3>
+              <div className="mb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm font-medium text-gray-600 block">🚛 Transportadora</span><p className="font-semibold text-gray-800">{vale.transportadora}</p></div>
+                  <div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm font-medium text-gray-600 block">📦 Quantidade</span><p className="font-semibold text-gray-800">{vale.quantidade} paletes</p></div>
+                  <div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm font-medium text-gray-600 block">📅 Vencimento</span><p className="font-semibold text-gray-800">{new Date(vale.dataVencimento).toLocaleDateString('pt-BR')}</p></div>
+                  <div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm font-medium text-gray-600 block">💰 Valor</span><p className="font-semibold text-green-600">{`R$ ${((vale.valorUnitario || 0) * (vale.quantidade || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}</p></div>
+              </div>
               {selectedVale === vale.id && (
                   <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <h4 className="font-semibold text-gray-800 mb-2">📝 Detalhes Adicionais</h4>
@@ -168,6 +168,41 @@ const ValesProcessados = () => {
         )}
       </div>
     </div>
+     {/* Summary Footer */}
+      {vales.length > 0 && (
+        <Card className="bg-gradient-to-r from-gray-50 to-gray-100 border-0 shadow-lg">
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-gray-800">{vales.length}</div>
+                <div className="text-sm text-gray-600">Total de Vales Processados</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-green-600">
+                  R${" "}
+                  {vales
+                    .reduce((acc, vale) => {
+                      const valorUnitarioNum = vale.valorUnitario
+                        ? Number(String(vale.valorUnitario).replace(/[R$\s\.]/g, "").replace(",", "."))
+                        : 0;
+                      const quantidadeNum = vale.quantidade || 0;
+                      return acc + valorUnitarioNum * quantidadeNum;
+                    }, 0)
+                    .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </div>
+                <div className="text-sm text-gray-600">Valor Total</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {vales.reduce((acc, vale) => acc + vale.quantidade, 0)}
+                </div>
+                <div className="text-sm text-gray-600">Total de Paletes</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      </>
   );
 };
 

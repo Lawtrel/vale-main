@@ -23,20 +23,49 @@ const Layout = () => {
   const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
   const [usuario, setUsuario] = useState<UsuarioLogado | null>(null);
+  const [online, setOnline] = useState(false);
+  const [isAdm, setIsAdm] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     const usuarioString = localStorage.getItem("usuario");
     if (usuarioString) {
       try {
         setUsuario(JSON.parse(usuarioString));
+        setOnline(true);
       } catch (error) {
         console.error("Erro ao parsear dados do usuário:", error);
         handleLogout();
+        setOnline(false);
       }
     } else {
         navigate("/login");
     }
   }, [navigate]);
+
+    useEffect(() => {
+    const usuarioString = localStorage.getItem("usuario");
+    console.log(usuarioString)
+
+    if (usuarioString) {
+      try {
+        const usuarioObj = JSON.parse(usuarioString);
+
+        const usuarioRole = usuarioObj.role || usuarioObj.papel || null;
+        setRole(usuarioRole);
+
+        // Verifica se é admin
+        if(usuarioRole === "adm"){
+          setIsAdm(true);
+        }
+        
+        console.log("Role do usuário:", usuarioRole);
+        console.log("É admin?", isAdm);
+      } catch (error) {
+        console.error("Erro ao converter dados do usuário:", error);
+      }
+    }
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("usuario");
@@ -97,24 +126,16 @@ const Layout = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              {showSearch ? (
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Digite para buscar..."
-                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                  onBlur={() => setShowSearch(false)}
-                />
-              ) : (
+              {isAdm ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="hidden md:flex items-center gap-2 text-gray-600 hover:text-gray-800"
-                  onClick={() => setShowSearch(true)}
+                  className="hidden md:flex items-center gap-2 text-gray-600 hover:bg-blue-500 border border-black"
                 >
-                  <Search className="w-4 h-4" />
-                  <span className="text-sm">Buscar</span>
+                  <a href="/dashboard/aprova-adm">Dashboard do Administrador</a>
                 </Button>
+              ) : (
+                <></>
               )}
 
               <Popover>
@@ -186,6 +207,22 @@ const Layout = () => {
           <main className="flex-1 overflow-auto">
             <Outlet />
           </main>
+          <footer className="bg-white border-t border-gray-200 px-6 py-4">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <div className="flex items-center gap-4">
+                <span>© 2024 Vale Palete Digital</span>
+                <div className={`flex items-center gap-2 text-xs ${online ? "text-green-700" : "text-red-700"} font-medium`}>
+                  <div className={`w-2 h-2 ${online ? "bg-green-500" : "bg-red-500"} rounded-full animate-pulse`}></div>
+                  { online ? "Sistema Online" : "Sistema Offline"}
+                </div>
+              </div>
+              <div className="hidden sm:flex items-center gap-4">
+                <span>Versão 2.1.0</span>
+                <span>•</span>
+                <span>Última atualização: Hoje</span>
+              </div>
+            </div>
+          </footer>
         </div>
       </div>
     </SidebarProvider>

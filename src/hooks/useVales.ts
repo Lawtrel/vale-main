@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { db, auth } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
 import { useToast } from "@/components/ui/use-toast";
 
 // Definindo o tipo para um Vale
@@ -8,17 +8,15 @@ export interface Vale {
   id?: string;
   cliente: string;
   transportadora: string;
-  produto: string;
-  placa: string;
-  motorista: string;
-  pesoBruto: number;
-  pesoTara: number;
-  pesoLiquido: number;
-  unidade: string;
+  valorUnitario: number;
+  dataVencimento: number;
   data: string;
   status: 'acumulado' | 'processado' | 'vencido';
   organizationId?: string;
   createdAt?: any;
+  observacoes: string;
+  quantidade: number;
+  dataCriacao: number;
 }
 
 export function useVales() {
@@ -26,7 +24,7 @@ export function useVales() {
   const [loading, setLoading] = useState(false);
 
   // Função para criar um novo vale
-  const criarVale = async (valeData: Omit<Vale, 'id' | 'status' | 'organizationId' | 'createdAt'>) => {
+  const criarVale = async (valeData: Omit<Vale, 'id' | 'status' >) => {
     setLoading(true);
     try {
       const user = auth.currentUser;
@@ -66,7 +64,7 @@ export function useVales() {
             throw new Error("Usuário não autenticado.");
         }
 
-        let q = query(collection(db, collectionName), where("organizationId", "==", user.uid));
+        let q = query(collection(db, collectionName));
         if (status) {
             q = query(q, where("status", "==", status));
         }
@@ -88,29 +86,57 @@ export function useVales() {
   };
 
   // Função para dar baixa em um vale
-    const baixarVale = async (valeId: string) => {
-        setLoading(true);
-        try {
-            const valeRef = doc(db, "valescadastrados", valeId);
-            await updateDoc(valeRef, {
-                status: 'processado'
-            });
-            toast({
-                title: "Sucesso!",
-                description: "Baixa do vale realizada com sucesso.",
-            });
-        } catch (error) {
-            console.error("Erro ao dar baixa no vale:", error);
-            toast({
-                title: "Erro",
-                description: "Não foi possível dar baixa no vale.",
-                variant: "destructive",
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+    const baixarVale = async (valeId?: string) => {
+    setLoading(true);
+    try {
+      const hoje = new Date().toISOString().split("T")[0];
+    if (valeId) {
+      // 1️⃣ Processar um vale específico
+      const valeRef = doc(db, "valescadastrados", valeId);
+      const valeSnap = await getDoc(valeRef);
 
+      if (!valeSnap.exists()) {
+        toast({ title: "Erro", description: "Vale não encontrado.", variant: "destructive" });
+        return;
+      }
+
+      const valeData = valeSnap.data();
+
+      if (valeData.status !== "processado") {
+        // Atualiza o status para processado
+        await setDoc(doc(db, "valesprocessados", valeId), { ...valeData, status: "processado", dataProcessado: hoje,});
+        await deleteDoc(valeRef);
+      }
+
+      toast({ title: "Sucesso!", description: `Vale ${valeId} processado com sucesso.` });
+    } else {
+      // 2️⃣ Processar todos os vales com status processado
+      const q = query(collection(db, "valescadastrados"), where("status", "==", "processado"));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        toast({ title: "Info", description: "Não há vales processados para mover." });
+        return;
+      }
+
+      for (const d of snapshot.docs) {
+        const valeData = d.data();
+        const id = d.id;
+
+        await setDoc(doc(db, "valesprocessados", id), valeData);
+        await deleteDoc(doc(db, "valescadastrados", id));
+        console.log(`Vale ${id} movido para valesprocessados`);
+      }
+
+      toast({ title: "Sucesso!", description: "Todos os vales processados foram movidos." });
+    }
+  } catch (error) {
+    console.error("Erro ao processar vales:", error);
+    toast({ title: "Erro", description: "Falha ao processar os vales.", variant: "destructive" });
+  } finally {
+    setLoading(false);
+  }
+};
 
   return { criarVale, buscarVales, baixarVale, loading };
 }

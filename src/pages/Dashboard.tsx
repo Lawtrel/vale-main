@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, where, Timestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { useVales, Vale } from "@/hooks/useVales";
 
 interface ValesProps {
   id: string;
@@ -19,6 +20,7 @@ interface ValesProps {
   dataCriacao: string;
   status: string;
 }
+type AgrupamentoCliente = { nome: string; vales: number; paletes: number; valor: number; };
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -33,6 +35,12 @@ const Dashboard = () => {
   const [processadosAtual, setProcessadosAtual] = useState(0);
   const [vencidosAnterior, setVencidosAnterior] = useState(0);
   const [valesData, setValesData] = useState<{ mes: string; pendentes: number; vencidos: number; processados: number }[]>([]);
+  const { buscarVales, loading } = useVales();
+  const [topClientes, setTopClientes] = useState<AgrupamentoCliente[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [online, setOnline] = useState(false);
+  const [usuarioLogado, setUsuarioLogado] = useState<{ email: string; role: string } | null>(null);
+  const [podeVerBotao, setPodeVerBotao] = useState(false)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -47,12 +55,27 @@ const Dashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
+    const usuarioInfo = localStorage.getItem("usuario");
+    if(usuarioInfo){
+      try {
+        const usuarioParse = JSON.parse(usuarioInfo);
+        setUsuarioLogado({ email: usuarioParse.email, role: usuarioParse.role });
+        if(usuarioLogado){
+          if(usuarioLogado.role === "adm") {
+            setPodeVerBotao(true)
+          }
+        }
+      } catch {
+        setUsuarioLogado(null);
+      }
+      
+    }
     const buscaTodosOsVales = async () => {
       if (!organizationId) return;
 
       try {
         const fetchCollection = async (collectionName: string): Promise<ValesProps[]> => {
-          const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
+          const q = query(collection(db, collectionName));
           const snapshot = await getDocs(q);
           return snapshot.docs.map(doc => {
             const data = doc.data();
@@ -78,8 +101,8 @@ const Dashboard = () => {
           });
         };
         
-        const transportadorasQuery = query(collection(db, "transportadoras"), where("organizationId", "==", organizationId));
-        const clientesQuery = query(collection(db, "clientes"), where("organizationId", "==", organizationId));
+        const transportadorasQuery = query(collection(db, "transportadoras"));
+        const clientesQuery = query(collection(db, "clientes"));
         const [transportadorasSnap, clientesSnap] = await Promise.all([getDocs(transportadorasQuery), getDocs(clientesQuery)]);
         setQtdTransportadoras(transportadorasSnap.size);
         setQtdClientes(clientesSnap.size);
@@ -89,13 +112,16 @@ const Dashboard = () => {
           fetchCollection("valesvencidos"),
           fetchCollection("valesprocessados"),
         ]);
+          console.log(dataProcessados)
 
         setValesCadastrados(dataCadastrados);
         setValesVencidos(dataVencidos);
         setValesProcessados(dataProcessados);
+        setOnline(true)
 
       } catch (error) {
         console.error("Erro ao buscar dados do Dashboard:", error);
+        setOnline(false)
       }
     };
 
@@ -162,13 +188,53 @@ const Dashboard = () => {
     { name: "Vencidos", value: vencidosAtual, color: "#ef4444" },
     { name: "Processados", value: processadosAtual, color: "#3b82f6" },
   ];
+      useEffect(() => {
+        const fetchVales = async () => {
+          try {
+            setError(null);
+            // Busca vales já processados
+            const data: Vale[] = await buscarVales("valesprocessados");
 
-  const topClientes = [
-    { nome: "Indústria ABC Ltda", vales: 15, valor: "R$ 45.000" },
-    { nome: "Metalúrgica XYZ S.A.", vales: 12, valor: "R$ 36.000" },
-    { nome: "Química DEF Ind.", vales: 8, valor: "R$ 24.000" },
-    { nome: "Construção GHI Corp", vales: 6, valor: "R$ 18.000" }
-  ];
+            // Agrupa por cliente
+            const clientesMap = new Map<string, AgrupamentoCliente>();
+            data.forEach((vale) => {
+              const clienteAtual =
+                clientesMap.get(vale.cliente) || {
+                  nome: vale.cliente,
+                  vales: 0,
+                  paletes: 0,
+                  valor: 0,
+                };
+              clienteAtual.vales++;
+              clienteAtual.paletes += vale.quantidade;
+              clienteAtual.valor += vale.quantidade * (vale.valorUnitario || 0);
+              clientesMap.set(vale.cliente, clienteAtual);
+            });
+
+            // Ordena pelo valor e pega o top 5
+            const top5 = Array.from(clientesMap.values())
+              .sort((a, b) => b.valor - a.valor)
+              .slice(0, 5);
+
+            setTopClientes(top5);
+          } catch (e) {
+            console.error(e);
+            setError("Falha ao carregar os vales processados.");
+          }
+        };
+
+        fetchVales();
+      }, []);
+      if (loading) return <div className="p-6 text-center">Carregando dados...</div>;
+      if (error) return <div className="p-6 text-center text-red-500">{error}</div>;
+  const valorMovimentado = valesProcessados.reduce((acc, vale) => {
+    return acc + (vale.quantidade * (vale.valorUnitario || 0));
+  }, 0);
+  const totalVales = cadastradosAtual + vencidosAtual + processadosAtual;
+  const taxaProcessamento = totalVales > 0 
+    ? ((processadosAtual / totalVales) * 100).toFixed(1) 
+    : "0.0";
+
 
   return (
     <div className="p-6 space-y-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
@@ -179,7 +245,7 @@ const Dashboard = () => {
             <p className="text-blue-100 text-lg">Controle inteligente de movimentação de paletes</p>
             <div className="flex items-center gap-4 mt-4">
               <Badge className="bg-green-500/20 text-green-100 border-green-300">
-                ✓ Sistema Ativo
+                {online ? "✓ Sistema Ativo": "X Sistema Inativo"}
               </Badge>
               <Badge className="bg-blue-500/20 text-blue-100 border-blue-300">
                 🚀 Inovação Digital
@@ -254,30 +320,33 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Button 
-          onClick={() => navigate('/dashboard/baixar-vale')}
-          className="h-16 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg"
-        >
-          <FileText className="mr-2 h-5 w-5" />
-          Processar Vales Recebidos
-        </Button>
-        <Button 
-          onClick={() => navigate('/dashboard/criar-vale')}
-          className="h-16 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg"
-        >
-          <Package className="mr-2 h-5 w-5" />
-          Criar Novo Vale
-        </Button>
-        <Button 
-          onClick={() => navigate('/dashboard/vales-vencidos')}
-          className="h-16 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg"
-        >
-          <AlertTriangle className="mr-2 h-5 w-5" />
-          Verificar Vencidos
-        </Button>
-      </div>
+        {/* Botões de navegação */}
+        {podeVerBotao ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Button 
+            onClick={() => navigate('/dashboard/baixar-vale')}
+            className="h-16 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg"
+          >
+            <FileText className="mr-2 h-5 w-5" />
+            Processar Vales Recebidos
+          </Button>
+          <Button 
+            onClick={() => navigate('/dashboard/criar-vale')}
+            className="h-16 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg"
+          >
+            <Package className="mr-2 h-5 w-5" />
+            Criar Novo Vale
+          </Button>
+          <Button 
+            onClick={() => navigate('/dashboard/vales-vencidos')}
+            className="h-16 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg"
+          >
+            <AlertTriangle className="mr-2 h-5 w-5" />
+            Verificar Vencidos
+          </Button>
+        </div>
+        ): <></>}
+        
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="shadow-lg">
@@ -366,7 +435,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-gray-800">{cliente.valor}</p>
+                  <p className="font-bold text-gray-800"> R$ {(cliente.valor / 1000).toFixed(0)}K</p>
                   <p className="text-sm text-gray-500">Volume financeiro</p>
                 </div>
               </div>
@@ -376,17 +445,18 @@ const Dashboard = () => {
       </Card>
 
       <div className="bg-white rounded-xl p-6 shadow-lg border">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
           <div>
-            <div className="text-2xl font-bold text-gray-800">98.5%</div>
+            <div className="text-2xl font-bold text-gray-800">{taxaProcessamento}%</div>
             <div className="text-sm text-gray-600">Taxa de Processamento</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-gray-800">2.3 dias</div>
-            <div className="text-sm text-gray-600">Tempo Médio</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-gray-800">R$ 2.4M</div>
+            <div className="text-2xl font-bold text-gray-800">{(valorMovimentado/ 1000).toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+              maximumFractionDigits: 0, // remove os centavos se quiser
+              })}K
+            </div>
             <div className="text-sm text-gray-600">Valor Movimentado</div>
           </div>
           <div>

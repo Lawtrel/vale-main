@@ -90,7 +90,7 @@ export default function CadastreSeUser() {
         });
 
         // Redireciona para o login
-        navigate("/login"); // Caminho para o login
+        navigate("/"); // Caminho para o login
       } else {
         throw new Error("Erro ao cadastrar");
       }
@@ -176,7 +176,7 @@ export default function CadastreSeUser() {
 
           {/* Link para a página de login */}
           <div className="mt-4 text-center">
-            <Link to="/login" className="text-blue-600 hover:text-blue-800">
+            <Link to="/" className="text-blue-600 hover:text-blue-800">
               Já tem uma conta? Faça login.
             </Link>
           </div>

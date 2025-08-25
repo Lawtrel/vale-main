@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 
 import { auth, db } from "@/lib/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { setDoc, doc } from "firebase/firestore";
+import { setDoc, doc, getDocs, collection } from "firebase/firestore";
 
 export default function Cadastro() {
   const { toast } = useToast();
@@ -20,7 +20,8 @@ export default function Cadastro() {
     email: "",
     senha: "",
     confirmarSenha: "",
-    role: "adm",
+    role: "",
+    status: "",
   });
 
   const handleChange = (field: string, value: string) => {
@@ -60,12 +61,40 @@ export default function Cadastro() {
         variant: "destructive"
       });
       return;
+    } 
+    if (form.role === "") {
+      toast({
+        title: "❌ Selecione um cargo",
+        description: "Você deve selecionar a sua função",
+        variant: "destructive"
+      });
+      return;
     }
 
-    setLoading(true);
 
+    setLoading(true);
+    
     try {
-            // Passo 1: Criar o usuário no Firebase Authentication
+    // 🔹 Bloquear cadastro de ADM se já existir
+    if (form.role === "adm") {
+      const adminsSnapshot = await getDocs(collection(db, "admins"));
+      const existeADM = adminsSnapshot.docs.some(
+        (doc) => doc.data().role === "adm"
+      );
+      if (existeADM) {
+        toast({
+          title: "❌ Ação não permitida",
+          description: "Já existe um administrador cadastrado.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+  }catch {
+
+  }
+    try {
+      // Passo 1: Criar o usuário no Firebase Authentication
       // Esta função já verifica se o e-mail está em uso e lança um erro se estiver.
       const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.senha);
       const user = userCredential.user;
@@ -85,11 +114,11 @@ export default function Cadastro() {
 
       toast({
         title: "✅ Cadastro enviado",
-        description: "Aguardando aprovação do administrador master.",
+        description: "Aguardando aprovação do administrador.",
       });
 
       // Limpa o formulário e redireciona para o login
-      setForm({ nome: "", email: "", senha: "", confirmarSenha: "", role: "adm" });
+      setForm({ nome: "", email: "", senha: "", confirmarSenha: "", role: "", status:"" });
       setTimeout(() => navigate("/login"), 2000);
 
     } catch (error: any) {
@@ -172,7 +201,9 @@ export default function Cadastro() {
               onChange={(e) => handleChange("role", e.target.value)}
               className="w-full border border-gray-300 rounded-md h-12 px-3 text-gray-700"
             >
+              <option value="selecione">Selecione um cargo</option>
               <option value="adm">Administrador</option>
+              <option value="supervisor">Supervisor</option>
               <option value="consultor">Consultor</option>
             </select>
           </div>

@@ -9,8 +9,9 @@ import { useNavigate } from "react-router-dom";
 
 // Importações do Firebase
 import { db, auth } from "@/lib/firebase";
-import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { toast } from "@/hooks/use-toast";
 
 interface ValePayload {
   id: string;
@@ -34,51 +35,69 @@ const ValesVencidos = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [openModal, setOpenModal] = useState(false);
+  const [valeSelecionado, setValeSelecionado] = useState<ValeVencido | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setOrganizationId(user.uid);
       } else {
-        navigate("/login");
+        navigate("/");
       }
     });
     return () => unsubscribe();
   }, [navigate]);
   
   useEffect(() => {
-    const fetchValesVencidos = async () => {
+      const fetchValesVencidos = async () => {
         if (!organizationId) return;
-        
+
         setLoading(true);
         setError(null);
+
         try {
-            const q = query(collection(db, "valesvencidos"), where("organizationId", "==", organizationId));
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(doc => {
-                const docData = doc.data();
-                const dataVenc = (docData.dataVencimento as Timestamp)?.toDate();
-                const hoje = new Date();
-                const diffTime = hoje.getTime() - dataVenc.getTime();
-                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          const q = query(
+            collection(db, "valesvencidos")
+          );
+          const snapshot = await getDocs(q);
 
-                return {
-                    id: doc.id,
-                    ...docData,
-                    dataCriacao: (docData.dataCriacao as Timestamp)?.toDate().toISOString(),
-                    dataVencimento: dataVenc.toISOString(),
-                    diasVencido: diffDays > 0 ? diffDays : 0,
-                } as ValeVencido;
-            });
+          const data: ValeVencido[] = snapshot.docs
+            .map(doc => {
+              const docData = doc.data();
+              if (!docData) return null;
 
-            setValesVencidos(data);
+              let dataVenc = docData.dataVencimento instanceof Timestamp
+                ? docData.dataVencimento.toDate()
+                : new Date(docData.dataVencimento);
+
+              const hoje = new Date();
+              hoje.setHours(0, 0, 0, 0);
+              dataVenc.setHours(0, 0, 0, 0);
+
+              const diffTime = hoje.getTime() - dataVenc.getTime();
+              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+              return {
+                id: doc.id,
+                ...docData,
+                dataVencimento: dataVenc.toISOString(),
+                dataCriacao: docData.dataCriacao instanceof Timestamp
+                  ? docData.dataCriacao.toDate().toISOString()
+                  : new Date(docData.dataCriacao).toISOString(),
+                diasVencido: diffDays > 0 ? diffDays : 0,
+              } as ValeVencido;
+            })
+          setValesVencidos(data);
+          console.log(snapshot)
         } catch (e) {
-            setError("Falha ao carregar os vales vencidos.");
-            console.error(e);
+          setError("Falha ao carregar os vales vencidos.");
+          console.error(e);
         } finally {
-            setLoading(false);
+          setLoading(false);
         }
-    };
+      };
+
 
     if (organizationId) {
         fetchValesVencidos();
@@ -94,6 +113,46 @@ const ValesVencidos = () => {
   if (loading) return <div className="p-6 text-center">Carregando vales vencidos...</div>;
   if (error) return <div className="p-6 text-center text-red-600">{error}</div>;
   const maxDiasVencido = valesVencidos.length > 0 ? Math.max(...valesVencidos.map(vale => vale.diasVencido)) : 0;
+
+  const confirmarContato = (vale: ValeVencido) => {
+  setValeSelecionado(vale);
+  setOpenModal(true);
+};
+
+const darBaixaVale = async () => {
+  if (!valeSelecionado) return;
+
+  try {
+    // Move para valesprocessados
+    await setDoc(doc(db, "valesprocessados", valeSelecionado.id), {
+      ...valeSelecionado,
+      status: "processado",
+      dataProcessado: new Date().toISOString(),
+    });
+
+    // Remove de valesvencidos
+    await deleteDoc(doc(db, "valesvencidos", valeSelecionado.id));
+
+    // Atualiza estado
+    setValesVencidos(prev => prev.filter(v => v.id !== valeSelecionado.id));
+
+    toast({
+      title: "✅ Vale processado",
+      description: `O vale ${valeSelecionado.id} foi movido para processados.`,
+    });
+  } catch (error) {
+    console.error("Erro ao processar vale:", error);
+    toast({
+      title: "Erro",
+      description: "Falha ao mover o vale. Tente novamente.",
+      variant: "destructive",
+    });
+  } finally {
+    setOpenModal(false);
+    setValeSelecionado(null);
+  }
+};
+
 
   return (
     <div className="p-6 space-y-6">
@@ -134,7 +193,36 @@ const ValesVencidos = () => {
                     <div><span className="font-medium">Data de Vencimento:</span><p className="text-red-700 font-semibold">{new Date(vale.dataVencimento).toLocaleDateString("pt-BR")}</p></div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2"><Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-50">Contatar Cliente</Button><Button size="sm" className="bg-red-600 hover:bg-red-700">Ação Emergencial</Button></div>
+                <div className="flex flex-col gap-2"><Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => confirmarContato(vale)}>Contatar Cliente</Button><Button size="sm" className="bg-red-600 hover:bg-red-700">Ação Emergencial</Button></div>
+                {openModal && valeSelecionado && (
+                  <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+                    <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+                      <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                        Cliente já foi contatado?
+                      </h2>
+                      <p className="text-gray-600 mb-6">
+                        Deseja dar baixa no vale <strong>{valeSelecionado.id}</strong> e mover para processados?
+                      </p>
+                      <div className="flex justify-end gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setOpenModal(false);
+                            setValeSelecionado(null);
+                          }}
+                        >
+                          Não, fechar
+                        </Button>
+                        <Button
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                          onClick={darBaixaVale}
+                        >
+                          Sim, dar baixa
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
